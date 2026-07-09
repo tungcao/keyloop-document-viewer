@@ -89,3 +89,10 @@ Format: mỗi mục ghi ngắn gọn — bối cảnh, AI đề xuất gì, mìn
 - AI generate: Tôi nhờ Gemini bổ sung thêm Top 10 OWASP để đảm bảo bảo mật.
 - Vấn đề phát hiện: Gemini liệt kê JWT/RBAC/Cloudflare WAF như thể đã triển khai.
 - Hành động: tôi yêu cầu Gemini tách mục bảo mật thành 2 phần rõ ràng — "Implemented in this submission" (validation, Helmet, CORS, SSRF-safe design — cái này thật, có code) vs "Production considerations, out of scope" - (WAF, JWT/IdP, TLS, dependency scanning - cái này chỉ để show tư duy, không claim đã code)
+
+## giai đoạn 6: Implement
+
+- Bối cảnh: nhờ Claude soạn plan 7 ngày để implement
+- Claude soạn plan rất chi tiết và cụ thể, tôi dựa vào đó để implement.
+- Tôi nhờ Claude soạn 1 file skill để đảm bảo luôn follow đúng yêu cầu AGENT_SPEC.md, và tạo prompt để Antigravity có thể implement hiệu quả và ít tốn token nhất.
+- Vấn đề: Tôi preview và thấy rất đầy đủ yêu cầu nên tôi đưa Antigravity thực hiện.
