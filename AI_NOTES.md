@@ -126,3 +126,14 @@ Format: mỗi mục ghi ngắn gọn — bối cảnh, AI đề xuất gì, mìn
   lại ở fix đầu tiên "có vẻ đúng", mà tiếp tục đọc console log thực tế để xác nhận.
 - Cần phải xóa HSTS cache đã lưu trong Safari (Privacy → Manage Website Data → remove
   localhost) — sửa code không tự động xóa cache trình duyệt đã ghi nhớ trước đó.
+
+## giai đoạn 9: debug source code
+
+- Bối cảnh: Sau khi Antigravity đã dev xong thì tôi bắt đầu đọc source code để đảm bảo code clean và đúng
+- Vấn đề: hiện tại MockSalesController và MockServiceController đang tự tạo interface riêng thay vì dùng UnifiedDocument
+- Hành động: tôi nhờ Claude gợi ý các tool để analyze source code trước:
+jscpd — bắt trùng lặp code (chính là vấn đề vừa rồi)
+knip — tìm dead code, unused export, duplicate export
+ESLint bổ sung rule chuyên bắt duplication
+dependency-cruiser hoặc madge — kiểm tra cấu trúc module đúng như AGENT_SPEC.md
+Gộp thành 1 script + chạy tự động trước mỗi commit

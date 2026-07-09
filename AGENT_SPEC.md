@@ -19,6 +19,9 @@
 - After generating each module, run `npm run build` and `npm run lint` mentally (i.e.
   produce code that would pass) — no unused imports, no `any` unless justified with a comment.
 - Write code, then write its test, in the same step — do not defer all tests to the end.
+- After `nest new`, delete default boilerplate: `app.controller.ts`,
+  `app.controller.spec.ts`, `app.service.ts`. Clean `app.module.ts` to only import
+  feature modules — do not leave the default `AppController`/`AppService` wired in.
 
 ---
 
@@ -91,6 +94,11 @@ interface UnifiedDocument {
   createdAt: string; // ISO 8601
 }
 ```
+
+Define this ONCE in `src/documents/interfaces/unified-document.interface.ts`.
+Reuse it everywhere the same shape is needed — including mock controllers in
+`src/mocks/`. Do NOT redefine an equivalent interface under a different name
+(e.g. `MockDocument`) anywhere else in the codebase.
 
 ### 3.2 API endpoint
 
