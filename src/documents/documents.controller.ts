@@ -3,6 +3,7 @@ import { ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { DocumentsService } from './documents.service';
 import { SearchVinDto } from './dto/search-vin.dto';
 import { DocumentResponseDto } from './dto/document-response.dto';
+import { CORRELATION_ID_HEADER } from '../common/middleware/correlation-id.middleware';
 
 @ApiTags('documents')
 @Controller('api/v1/documents')
@@ -25,7 +26,7 @@ export class DocumentsController {
   })
   async getDocuments(
     @Param() params: SearchVinDto,
-    @Headers('x-correlation-id') incomingCorrelationId?: string,
+    @Headers(CORRELATION_ID_HEADER) incomingCorrelationId?: string,
   ): Promise<DocumentResponseDto> {
     // Correlation ID sourced from inbound header; middleware fills it if absent
     const correlationId = incomingCorrelationId ?? 'unknown';

@@ -137,3 +137,11 @@ knip — tìm dead code, unused export, duplicate export
 ESLint bổ sung rule chuyên bắt duplication
 dependency-cruiser hoặc madge — kiểm tra cấu trúc module đúng như AGENT_SPEC.md
 Gộp thành 1 script + chạy tự động trước mỗi commit
+
+## giai đoạn 10: clean source code với knip
+
+- Bối cảnh: clean code với knip
+- Vấn đề: sau khi chạy knip thì phát hiện @types/uuid đã được install nhưng không được sử dụng
+- Hành động: vì tôi dùng uuid@14.0.1 nên không cần @types/uuid nữa
+- Vấn đề 2: pino-pretty có sử dụng nhưng được khai báo dựa theo transport: { target: 'pino-pretty' } nên knip không phát hiện
+- Hành động: tôi bổ sung thêm knip.json để ignore
