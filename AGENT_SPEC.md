@@ -24,6 +24,8 @@
 
 ## 1. Dependencies (exact list — do not add others without confirming)
 
+I installed the list bellow, just skip this step:
+
 ```
 @nestjs/axios @nestjs/config @nestjs/swagger @nestjs/mongoose mongoose
 ioredis class-validator class-transformer helmet opossum nestjs-pino
