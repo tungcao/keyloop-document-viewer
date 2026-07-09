@@ -4,6 +4,7 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { Logger } from 'nestjs-pino';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
+import { Request, Response, NextFunction } from 'express';
 
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule, { bufferLogs: true });
@@ -12,7 +13,28 @@ async function bootstrap(): Promise<void> {
   app.useLogger(app.get(Logger));
 
   // ── Security headers (Helmet) ──────────────────────────────────────────
-  app.use(helmet());
+  const isProduction = process.env.NODE_ENV === 'production';
+
+  app.use((req: Request, res: Response, next: NextFunction) => {
+    if (req.path.startsWith('/api/docs')) {
+      return helmet({ contentSecurityPolicy: false, hsts: false })(
+        req,
+        res,
+        next,
+      );
+    }
+    return helmet({
+      hsts: isProduction,
+      contentSecurityPolicy: {
+        directives: {
+          defaultSrc: [`'self'`],
+          scriptSrc: [`'self'`],
+          styleSrc: [`'self'`],
+          imgSrc: [`'self'`, 'data:'],
+        },
+      },
+    })(req, res, next);
+  });
 
   // ── Input validation ───────────────────────────────────────────────────
   app.useGlobalPipes(

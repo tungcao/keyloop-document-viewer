@@ -102,3 +102,27 @@ Format: mỗi mục ghi ngắn gọn — bối cảnh, AI đề xuất gì, mìn
 - Bối cảnh: sau khi AI genearte project xong thì tôi lint project để đảm bảo code sạch
 - Vấn đề: sau khi chạy npm run lint thì kết quả 28 problems (27 errors, 1 warning)
 - Hành động: tôi Gemini hướng dẫn cách fix từng lỗi.
+
+## giai đoạn 8: Debug Helmet + Swagger blank page
+
+- Bối cảnh: Bật Helmet (CSP mặc định) → truy cập /api/docs bị trắng trang hoàn toàn.
+- Thử Gemini trước: đề xuất thêm unpkg.com vào CSP whitelist → không fix được, vì Swagger
+  UI của @nestjs/swagger thực ra serve asset same-origin, không load từ unpky.com.
+- Hỏi Claude: phân tích lại, nghi vấn đầu tiên là thiếu fontSrc/workerSrc trong CSP.
+- Vẫn còn lỗi sau khi sửa CSP → console log thực tế cho thấy lỗi khác hẳn: "TLS error
+  caused the secure connection to fail" (Safari cố load qua HTTPS dù server chạy HTTP).
+- Phát hiện root cause thật: Helmet mặc định bật HSTS, và Safari áp dụng HSTS ngay cả khi
+  nhận header qua HTTP (quirk riêng của Safari) → trình duyệt tự ép mọi request sau đó sang
+  <https://localhost>, trong khi server không chạy TLS.
+- Hành động: tắt HSTS ở môi trường dev (`hsts: false` / theo `NODE_ENV`), đồng thời tắt cả
+  CSP cho riêng route /api/docs bằng middleware có điều kiện theo path — không disable
+  Helmet toàn cục.
+- Vấn đề phụ phát sinh: middleware conditional viết tay dùng type `IncomingMessage`/
+  `ServerResponse` (Node thô) thay vì `Request`/`Response`/`NextFunction` của Express →
+  ESLint báo "unsafe call", `.path` không tồn tại trên `IncomingMessage`. Sửa lại đúng type
+  từ `express`.
+- Bài học verification quan trọng: 2 lần chẩn đoán sai liên tiếp (unpkg.com, rồi tưởng vẫn
+  là CSP) trước khi tìm ra root cause thật (HSTS/Safari) — minh chứng cho việc không dừng
+  lại ở fix đầu tiên "có vẻ đúng", mà tiếp tục đọc console log thực tế để xác nhận.
+- Cần phải xóa HSTS cache đã lưu trong Safari (Privacy → Manage Website Data → remove
+  localhost) — sửa code không tự động xóa cache trình duyệt đã ghi nhớ trước đó.
