@@ -1,3 +1,12 @@
 {
-  "ignoreDependencies": ["pino-pretty"]
+  "ignoreDependencies": [
+    "pino-pretty",
+    "@eslint/eslintrc",
+    "@types/supertest",
+    "lint-staged",
+    "source-map-support",
+    "supertest",
+    "ts-loader",
+    "husky"
+  ]
 }

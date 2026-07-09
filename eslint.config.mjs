@@ -1,6 +1,7 @@
 // @ts-check
 import eslint from '@eslint/js';
 import eslintPluginPrettierRecommended from 'eslint-plugin-prettier/recommended';
+import sonarjs from 'eslint-plugin-sonarjs';
 import globals from 'globals';
 import tseslint from 'typescript-eslint';
 
@@ -10,6 +11,18 @@ export default tseslint.config(
   },
   eslint.configs.recommended,
   ...tseslint.configs.recommendedTypeChecked,
+
+  {
+    // Tự khai báo plugin và kế thừa rules thủ công cho Flat Config
+    plugins: {
+      sonarjs,
+    },
+    rules: {
+      // @ts-ignore - lấy các rule khuyến nghị từ object nếu có
+      ...sonarjs.configs?.recommended?.rules, 
+    },
+  },
+
   eslintPluginPrettierRecommended,
   {
     languageOptions: {

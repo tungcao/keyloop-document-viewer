@@ -1,34 +1,7 @@
 import { Controller, Get, Query } from '@nestjs/common';
 import { ApiExcludeController } from '@nestjs/swagger';
-
-interface MockDocument {
-  id: string;
-  title: string;
-  type: string;
-  sourceSystem: 'sales' | 'service';
-  createdAt: string;
-}
-
-const NOT_FOUND_VIN = '00000000000000000';
-
-function fakeSalesDocs(vin: string): MockDocument[] {
-  return [
-    {
-      id: `sales-${vin}-1`,
-      title: `Sales Order #SO-${vin.slice(-4)}`,
-      type: 'sales_order',
-      sourceSystem: 'sales',
-      createdAt: new Date().toISOString(),
-    },
-    {
-      id: `sales-${vin}-2`,
-      title: `Finance Agreement #FA-${vin.slice(-4)}`,
-      type: 'finance_agreement',
-      sourceSystem: 'sales',
-      createdAt: new Date().toISOString(),
-    },
-  ];
-}
+import { UnifiedDocument } from 'src/documents/interfaces/unified-document.interface';
+import { fakeSalesDocs, NOT_FOUND_VIN } from './mock-data.helper';
 
 @ApiExcludeController()
 @Controller('mock/sales')
@@ -38,7 +11,7 @@ export class MockSalesController {
     @Query('vin') vin: string,
     @Query('simulateError') simulateError?: string,
     @Query('delay') delay?: string,
-  ): Promise<MockDocument[] | { error: string }> {
+  ): Promise<UnifiedDocument[] | { error: string }> {
     const delayMs = parseInt(delay ?? '0', 10);
 
     if (delayMs > 0) {
