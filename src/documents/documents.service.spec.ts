@@ -91,7 +91,11 @@ describe('DocumentsService.searchByVin', () => {
     expect(result.meta.sourceStatus).toEqual({ sales: 'ok', service: 'ok' });
     expect(result.meta.cacheHit).toBe(false);
     expect(cacheSet).toHaveBeenCalledTimes(1);
-    expect(cacheSet).toHaveBeenCalledWith(`documents:${VIN}`, expect.objectContaining({ vin: VIN }), 60);
+    expect(cacheSet).toHaveBeenCalledWith(
+      `documents:${VIN}`,
+      expect.objectContaining({ vin: VIN }),
+      60,
+    );
   });
 
   it('sales fails, service succeeds → sourceStatus.sales unavailable, service docs only, 200', async () => {

@@ -26,7 +26,7 @@ export function createCircuitBreaker<TArgs extends unknown[], TReturn>(
     timeout: options.timeoutMs,
     errorThresholdPercentage: 50,
     resetTimeout: 10_000, // half-open after 10 s
-    volumeThreshold: 5,   // minimum calls before breaker can trip
+    volumeThreshold: 5, // minimum calls before breaker can trip
   });
 
   breaker.on('open', () =>

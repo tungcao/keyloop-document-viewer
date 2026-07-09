@@ -22,4 +22,5 @@ export class SearchAuditLog {
   // createdAt is injected by { timestamps: true }
 }
 
-export const SearchAuditLogSchema = SchemaFactory.createForClass(SearchAuditLog);
+export const SearchAuditLogSchema =
+  SchemaFactory.createForClass(SearchAuditLog);

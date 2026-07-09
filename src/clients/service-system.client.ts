@@ -22,7 +22,10 @@ export class ServiceSystemClient {
     vin: string,
     correlationId: string,
   ): Promise<UnifiedDocument[]> {
-    this.logger.log({ correlationId, vin, source: 'service' }, 'Fetching documents');
+    this.logger.log(
+      { correlationId, vin, source: 'service' },
+      'Fetching documents',
+    );
 
     const response = await firstValueFrom(
       this.http

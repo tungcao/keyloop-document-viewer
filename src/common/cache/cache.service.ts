@@ -1,4 +1,9 @@
-import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  OnModuleDestroy,
+  OnModuleInit,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import Redis from 'ioredis';
 
@@ -30,8 +35,9 @@ export class CacheService implements OnModuleInit, OnModuleDestroy {
       const raw = await this.client.get(key);
       if (raw === null) return null;
       return JSON.parse(raw) as T;
-    } catch (err) {
-      this.logger.error({ err, key }, 'Cache GET failed — treating as miss');
+    } catch (err: unknown) {
+      const error = err as Error;
+      this.logger.error(`Cache GET failed for key: ${key}`, error.stack);
       return null;
     }
   }
@@ -39,8 +45,9 @@ export class CacheService implements OnModuleInit, OnModuleDestroy {
   async set(key: string, value: unknown, ttlSeconds: number): Promise<void> {
     try {
       await this.client.set(key, JSON.stringify(value), 'EX', ttlSeconds);
-    } catch (err) {
-      this.logger.error({ err, key }, 'Cache SET failed — continuing without cache');
+    } catch (err: unknown) {
+      const error = err as Error;
+      this.logger.error(`Cache SET failed for key: ${key}`, error.stack);
     }
   }
 }

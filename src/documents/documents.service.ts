@@ -19,8 +19,8 @@ export class DocumentsService {
   private readonly cacheTtl: number;
 
   // One circuit breaker per client — never shared (AGENT_SPEC §4 step 3)
-  private readonly salesBreaker;
-  private readonly serviceBreaker;
+  private readonly salesBreaker: ReturnType<typeof createCircuitBreaker>;
+  private readonly serviceBreaker: ReturnType<typeof createCircuitBreaker>;
 
   constructor(
     private readonly salesClient: SalesSystemClient,
@@ -73,24 +73,44 @@ export class DocumentsService {
       service: serviceResult.status === 'fulfilled' ? 'ok' : 'unavailable',
     } as const;
 
-    this.logger.log({ correlationId, vin, sourceStatus, latencyMs }, 'Fan-out complete');
+    this.logger.log(
+      { correlationId, vin, sourceStatus, latencyMs },
+      'Fan-out complete',
+    );
 
     // Step 6 — both failed → 502
-    if (sourceStatus.sales === 'unavailable' && sourceStatus.service === 'unavailable') {
-      this.auditLogService.writeLog({ vin, correlationId, sourceStatus, latencyMs });
+    if (
+      sourceStatus.sales === 'unavailable' &&
+      sourceStatus.service === 'unavailable'
+    ) {
+      this.auditLogService.writeLog({
+        vin,
+        correlationId,
+        sourceStatus,
+        latencyMs,
+      });
       throw new BadGatewayException('Both source systems are unavailable');
     }
 
     // Gather documents from successful calls
     const salesDocs: UnifiedDocument[] =
-      salesResult.status === 'fulfilled' ? salesResult.value : [];
+      salesResult.status === 'fulfilled'
+        ? (salesResult.value as UnifiedDocument[])
+        : [];
     const serviceDocs: UnifiedDocument[] =
-      serviceResult.status === 'fulfilled' ? serviceResult.value : [];
+      serviceResult.status === 'fulfilled'
+        ? (serviceResult.value as UnifiedDocument[])
+        : [];
     const mergedDocs = [...salesDocs, ...serviceDocs];
 
     // Step 7 — both succeeded but both empty → 404
     if (mergedDocs.length === 0) {
-      this.auditLogService.writeLog({ vin, correlationId, sourceStatus, latencyMs });
+      this.auditLogService.writeLog({
+        vin,
+        correlationId,
+        sourceStatus,
+        latencyMs,
+      });
       throw new NotFoundException('No documents found for this VIN');
     }
 
@@ -102,7 +122,12 @@ export class DocumentsService {
     };
 
     await this.cacheService.set(cacheKey, payload, this.cacheTtl);
-    this.auditLogService.writeLog({ vin, correlationId, sourceStatus, latencyMs });
+    this.auditLogService.writeLog({
+      vin,
+      correlationId,
+      sourceStatus,
+      latencyMs,
+    });
 
     return payload;
   }

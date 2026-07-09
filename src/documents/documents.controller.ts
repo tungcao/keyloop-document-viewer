@@ -11,11 +11,18 @@ export class DocumentsController {
 
   @Get(':vin')
   @ApiOperation({ summary: 'Retrieve all documents for a given VIN' })
-  @ApiParam({ name: 'vin', description: '17-character alphanumeric VIN', example: '1HGCR2F8XHA000001' })
+  @ApiParam({
+    name: 'vin',
+    description: '17-character alphanumeric VIN',
+    example: '1HGCR2F8XHA000001',
+  })
   @ApiResponse({ status: 200, type: DocumentResponseDto })
   @ApiResponse({ status: 400, description: 'Invalid VIN format' })
   @ApiResponse({ status: 404, description: 'No documents found for this VIN' })
-  @ApiResponse({ status: 502, description: 'Both source systems are unavailable' })
+  @ApiResponse({
+    status: 502,
+    description: 'Both source systems are unavailable',
+  })
   async getDocuments(
     @Param() params: SearchVinDto,
     @Headers('x-correlation-id') incomingCorrelationId?: string,

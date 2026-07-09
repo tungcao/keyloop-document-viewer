@@ -96,3 +96,9 @@ Format: mỗi mục ghi ngắn gọn — bối cảnh, AI đề xuất gì, mìn
 - Claude soạn plan rất chi tiết và cụ thể, tôi dựa vào đó để implement.
 - Tôi nhờ Claude soạn 1 file skill để đảm bảo luôn follow đúng yêu cầu AGENT_SPEC.md, và tạo prompt để Antigravity có thể implement hiệu quả và ít tốn token nhất.
 - Vấn đề: Tôi preview và thấy rất đầy đủ yêu cầu nên tôi đưa Antigravity thực hiện.
+
+## giai đoạn 7: Fix lint
+
+- Bối cảnh: sau khi AI genearte project xong thì tôi lint project để đảm bảo code sạch
+- Vấn đề: sau khi chạy npm run lint thì kết quả 28 problems (27 errors, 1 warning)
+- Hành động: tôi Gemini hướng dẫn cách fix từng lỗi.
