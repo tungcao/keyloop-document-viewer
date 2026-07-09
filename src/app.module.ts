@@ -1,9 +1,14 @@
-import { Module } from '@nestjs/common';
+import { Module, NestModule, MiddlewareConsumer } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { MongooseModule } from '@nestjs/mongoose';
 import { LoggerModule } from 'nestjs-pino';
 import configuration from './config/configuration';
 import { MocksModule } from './mocks/mocks.module';
+import { ClientsModule } from './clients/clients.module';
+import { CacheModule } from './common/cache/cache.module';
+import { AuditModule } from './audit/audit.module';
+import { DocumentsModule } from './documents/documents.module';
+import { CorrelationIdMiddleware } from './common/middleware/correlation-id.middleware';
 
 @Module({
   imports: [
@@ -36,6 +41,14 @@ import { MocksModule } from './mocks/mocks.module';
 
     // ── Feature modules ──────────────────────────────────────────────────
     MocksModule,
+    ClientsModule,
+    CacheModule,
+    AuditModule,
+    DocumentsModule,
   ],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer): void {
+    consumer.apply(CorrelationIdMiddleware).forRoutes('*');
+  }
+}
