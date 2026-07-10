@@ -145,3 +145,7 @@ Gộp thành 1 script + chạy tự động trước mỗi commit
 - Hành động: vì tôi dùng uuid@14.0.1 nên không cần @types/uuid nữa
 - Vấn đề 2: pino-pretty có sử dụng nhưng được khai báo dựa theo transport: { target: 'pino-pretty' } nên knip không phát hiện
 - Hành động: tôi bổ sung thêm knip.json để ignore
+
+## giai đoạn 11: verify requirement
+
+- Design Doc mô tả OpenTelemetry nhưng code ban đầu (Antigravity generate) thiếu — tự phát hiện qua việc đối chiếu Design Doc với source code thực tế, bổ sung implementation để đảm bảo tính nhất quán giữa tài liệu và code.

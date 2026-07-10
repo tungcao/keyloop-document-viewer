@@ -1,4 +1,4 @@
-import { UnifiedDocument } from 'src/documents/interfaces/unified-document.interface';
+import { UnifiedDocument } from '../documents/interfaces/unified-document.interface';
 
 export const NOT_FOUND_VIN = '00000000000000000';
 
