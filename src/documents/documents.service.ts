@@ -5,6 +5,8 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { SpanStatusCode } from '@opentelemetry/api';
+import { tracer } from '../telemetry/tracing';
 import { SalesSystemClient } from '../clients/sales-system.client';
 import { ServiceSystemClient } from '../clients/service-system.client';
 import { CacheService } from '../common/cache/cache.service';
@@ -49,86 +51,125 @@ export class DocumentsService {
     vin: string,
     correlationId: string,
   ): Promise<DocumentResponseDto> {
-    // Step 2 — cache lookup
-    const cacheKey = `documents:${vin}`;
-    const cached = await this.cacheService.get<DocumentResponseDto>(cacheKey);
-    if (cached) {
-      this.logger.log({ correlationId, vin }, 'Cache hit');
-      return { ...cached, meta: { ...cached.meta, cacheHit: true } };
-    }
+    return tracer.startActiveSpan('documents.searchByVin', async (rootSpan) => {
+      rootSpan.setAttribute('vin', vin);
+      rootSpan.setAttribute('correlationId', correlationId);
 
-    // Step 3 — concurrent fan-out via Promise.allSettled (never Promise.all)
-    const start = Date.now();
+      try {
+        // Step 2 — cache lookup
+        const cacheKey = `documents:${vin}`;
+        const cached =
+          await this.cacheService.get<DocumentResponseDto>(cacheKey);
+        if (cached) {
+          this.logger.log({ correlationId, vin }, 'Cache hit');
+          rootSpan.setAttribute('cache.hit', true);
+          return { ...cached, meta: { ...cached.meta, cacheHit: true } };
+        }
+        rootSpan.setAttribute('cache.hit', false);
 
-    const [salesResult, serviceResult] = await Promise.allSettled([
-      this.salesBreaker.fire(vin, correlationId),
-      this.serviceBreaker.fire(vin, correlationId),
-    ]);
+        // Step 3 — concurrent fan-out via Promise.allSettled (never Promise.all)
+        const start = Date.now();
 
-    const latencyMs = Date.now() - start;
+        const [salesResult, serviceResult] = await Promise.allSettled([
+          tracer.startActiveSpan('sales-system-call', async (span) => {
+            try {
+              const res = await this.salesBreaker.fire(vin, correlationId);
+              span.setStatus({ code: SpanStatusCode.OK });
+              return res;
+            } catch (err: unknown) {
+              const error = err as Error;
+              span.recordException(error);
+              span.setStatus({ code: SpanStatusCode.ERROR });
+              throw error;
+            } finally {
+              span.end();
+            }
+          }),
+          tracer.startActiveSpan('service-system-call', async (span) => {
+            try {
+              const res = await this.serviceBreaker.fire(vin, correlationId);
+              span.setStatus({ code: SpanStatusCode.OK });
+              return res;
+            } catch (err: unknown) {
+              const error = err as Error;
+              span.recordException(error);
+              span.setStatus({ code: SpanStatusCode.ERROR });
+              throw error;
+            } finally {
+              span.end();
+            }
+          }),
+        ]);
 
-    // Step 5 — build sourceStatus
-    const sourceStatus = {
-      sales: salesResult.status === 'fulfilled' ? 'ok' : 'unavailable',
-      service: serviceResult.status === 'fulfilled' ? 'ok' : 'unavailable',
-    } as const;
+        const latencyMs = Date.now() - start;
+        rootSpan.setAttribute('latencyMs', latencyMs);
 
-    this.logger.log(
-      { correlationId, vin, sourceStatus, latencyMs },
-      'Fan-out complete',
-    );
+        // Step 5 — build sourceStatus
+        const sourceStatus = {
+          sales: salesResult.status === 'fulfilled' ? 'ok' : 'unavailable',
+          service: serviceResult.status === 'fulfilled' ? 'ok' : 'unavailable',
+        } as const;
 
-    // Step 6 — both failed → 502
-    if (
-      sourceStatus.sales === 'unavailable' &&
-      sourceStatus.service === 'unavailable'
-    ) {
-      this.auditLogService.writeLog({
-        vin,
-        correlationId,
-        sourceStatus,
-        latencyMs,
-      });
-      throw new BadGatewayException('Both source systems are unavailable');
-    }
+        this.logger.log(
+          { correlationId, vin, sourceStatus, latencyMs },
+          'Fan-out complete',
+        );
 
-    // Gather documents from successful calls
-    const salesDocs: UnifiedDocument[] =
-      salesResult.status === 'fulfilled'
-        ? (salesResult.value as UnifiedDocument[])
-        : [];
-    const serviceDocs: UnifiedDocument[] =
-      serviceResult.status === 'fulfilled'
-        ? (serviceResult.value as UnifiedDocument[])
-        : [];
-    const mergedDocs = [...salesDocs, ...serviceDocs];
+        // Step 6 — both failed → 502
+        if (
+          sourceStatus.sales === 'unavailable' &&
+          sourceStatus.service === 'unavailable'
+        ) {
+          this.auditLogService.writeLog({
+            vin,
+            correlationId,
+            sourceStatus,
+            latencyMs,
+          });
+          throw new BadGatewayException('Both source systems are unavailable');
+        }
 
-    // Step 7 — both succeeded but both empty → 404
-    if (mergedDocs.length === 0) {
-      this.auditLogService.writeLog({
-        vin,
-        correlationId,
-        sourceStatus,
-        latencyMs,
-      });
-      throw new NotFoundException('No documents found for this VIN');
-    }
+        // Gather documents from successful calls
+        const salesDocs: UnifiedDocument[] =
+          salesResult.status === 'fulfilled'
+            ? (salesResult.value as UnifiedDocument[])
+            : [];
+        const serviceDocs: UnifiedDocument[] =
+          serviceResult.status === 'fulfilled'
+            ? (serviceResult.value as UnifiedDocument[])
+            : [];
+        const mergedDocs = [...salesDocs, ...serviceDocs];
 
-    // Step 8 — build payload, cache it, fire-and-forget audit log
-    const payload: DocumentResponseDto = {
-      vin,
-      documents: mergedDocs,
-      meta: { sourceStatus, cacheHit: false },
-    };
+        // Step 7 — both succeeded but both empty → 404
+        if (mergedDocs.length === 0) {
+          this.auditLogService.writeLog({
+            vin,
+            correlationId,
+            sourceStatus,
+            latencyMs,
+          });
+          throw new NotFoundException('No documents found for this VIN');
+        }
 
-    await this.cacheService.set(cacheKey, payload, this.cacheTtl);
-    this.auditLogService.writeLog({
-      vin,
-      correlationId,
-      sourceStatus,
-      latencyMs,
+        // Step 8 — build payload, cache it, fire-and-forget audit log
+        const payload: DocumentResponseDto = {
+          vin,
+          documents: mergedDocs,
+          meta: { sourceStatus, cacheHit: false },
+        };
+
+        await this.cacheService.set(cacheKey, payload, this.cacheTtl);
+        this.auditLogService.writeLog({
+          vin,
+          correlationId,
+          sourceStatus,
+          latencyMs,
+        });
+
+        return payload;
+      } finally {
+        rootSpan.end();
+      }
     });
-
-    return payload;
   }
 }
