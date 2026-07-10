@@ -32,18 +32,17 @@ export class DocumentsService {
     private readonly config: ConfigService,
   ) {
     this.cacheTtl = this.config.get<number>('cacheTtlSeconds')!;
-    const timeoutMs = this.config.get<number>('downstreamTimeoutMs')!;
 
     this.salesBreaker = createCircuitBreaker(
       (vin: string, correlationId: string) =>
         this.salesClient.fetchDocuments(vin, correlationId),
-      { name: 'sales', timeoutMs },
+      { name: 'sales' },
     );
 
     this.serviceBreaker = createCircuitBreaker(
       (vin: string, correlationId: string) =>
         this.serviceClient.fetchDocuments(vin, correlationId),
-      { name: 'service', timeoutMs },
+      { name: 'service' },
     );
   }
 
@@ -63,6 +62,7 @@ export class DocumentsService {
         if (cached) {
           this.logger.log({ correlationId, vin }, 'Cache hit');
           rootSpan.setAttribute('cache.hit', true);
+          rootSpan.setStatus({ code: SpanStatusCode.OK });
           return { ...cached, meta: { ...cached.meta, cacheHit: true } };
         }
         rootSpan.setAttribute('cache.hit', false);
@@ -72,6 +72,8 @@ export class DocumentsService {
 
         const [salesResult, serviceResult] = await Promise.allSettled([
           tracer.startActiveSpan('sales-system-call', async (span) => {
+            span.setAttribute('vin', vin);
+            span.setAttribute('correlationId', correlationId);
             try {
               const res = await this.salesBreaker.fire(vin, correlationId);
               span.setStatus({ code: SpanStatusCode.OK });
@@ -86,6 +88,8 @@ export class DocumentsService {
             }
           }),
           tracer.startActiveSpan('service-system-call', async (span) => {
+            span.setAttribute('vin', vin);
+            span.setAttribute('correlationId', correlationId);
             try {
               const res = await this.serviceBreaker.fire(vin, correlationId);
               span.setStatus({ code: SpanStatusCode.OK });
@@ -166,7 +170,16 @@ export class DocumentsService {
           latencyMs,
         });
 
+        rootSpan.setStatus({ code: SpanStatusCode.OK });
         return payload;
+      } catch (err: unknown) {
+        // Covers BadGatewayException (502), NotFoundException (404), and any
+        // unexpected error — mark the root span as ERROR, then re-throw so
+        // Nest's exception filters still produce the correct HTTP response.
+        const error = err as Error;
+        rootSpan.recordException(error);
+        rootSpan.setStatus({ code: SpanStatusCode.ERROR });
+        throw error;
       } finally {
         rootSpan.end();
       }

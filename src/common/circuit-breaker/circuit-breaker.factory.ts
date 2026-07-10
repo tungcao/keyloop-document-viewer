@@ -6,7 +6,6 @@ export interface CircuitBreakerOptions {
   /** Human-readable name used in log messages */
   name: string;
   /** Milliseconds before a call is considered timed out */
-  timeoutMs: number;
 }
 
 /**
@@ -23,7 +22,6 @@ export function createCircuitBreaker<TArgs extends unknown[], TReturn>(
   const logger = new Logger(`CircuitBreaker:${options.name}`);
 
   const breaker = new CircuitBreaker(action, {
-    timeout: options.timeoutMs,
     errorThresholdPercentage: 50,
     resetTimeout: 10_000, // half-open after 10 s
     volumeThreshold: 5, // minimum calls before breaker can trip

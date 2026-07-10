@@ -9,6 +9,7 @@ import { CacheModule } from './common/cache/cache.module';
 import { AuditModule } from './audit/audit.module';
 import { DocumentsModule } from './documents/documents.module';
 import { CorrelationIdMiddleware } from './common/middleware/correlation-id.middleware';
+import type { Request, Response } from 'express';
 
 @Module({
   imports: [
@@ -27,6 +28,10 @@ import { CorrelationIdMiddleware } from './common/middleware/correlation-id.midd
           process.env.NODE_ENV !== 'production'
             ? { target: 'pino-pretty' }
             : undefined,
+        serializers: {
+          req: (req: Request) => ({ method: req.method, url: req.url }),
+          res: (res: Response) => ({ statusCode: res.statusCode }),
+        },
       },
     }),
 

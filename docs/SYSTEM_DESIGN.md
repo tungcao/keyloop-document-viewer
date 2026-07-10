@@ -50,7 +50,7 @@ graph TD
 |---|---|
 | **NestJS API Gateway** | Exposes `GET /api/v1/documents/:vin`, validates input via `class-validator` DTOs, applies security headers (Helmet), returns the OpenAPI/Swagger contract. |
 | **Aggregator Service** | Orchestrates cache lookup, parallel downstream fan-out, response normalization, and the audit-log write. |
-| **Circuit Breakers (opossum)** | Independently monitor each downstream (Sales, Service); trip after repeated failures to fail fast rather than cascade latency. |
+| **Circuit Breakers (opossum)** | Independently monitor each downstream (Sales, Service) based on the client's success/failure outcome; trip after repeated failures to fail fast rather than cascade latency. Timeout enforcement itself lives in the HTTP client, not the breaker, to avoid two competing timeout sources. |
 | **SalesSystemClient / ServiceSystemClient** | Thin HTTP clients per external system, each with its own timeout (3s). |
 | **Redis Cache** | In-memory cache of the aggregated response per VIN, short TTL, reduces load on mocked downstreams and serves as a fast path on repeat lookups. |
 | **MongoDB — `SearchAuditLog`** | **Persistent database** required by the challenge. Stores one record per search: which VIN was queried, when, and whether each source succeeded or failed. This is the system's durable data — Redis is explicitly a cache, not the persistence layer. |
