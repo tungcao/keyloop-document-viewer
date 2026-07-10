@@ -215,6 +215,7 @@ being carried forward:
 | Implementation (Antigravity) | Mock controllers (`MockSalesController`, `MockServiceController`) each defined their own local `MockDocument` interface | Duplicated the existing `UnifiedDocument` interface under a different name — a maintainability risk (drift over time) | Caught via manual code review, then set up `jscpd` and `knip` as repeatable static-analysis checks so this class of issue is caught automatically going forward, not just by eyeballing |
 | Debugging: Swagger blank page | Gemini's first fix (whitelisting `unpkg.com` in CSP) didn't work | Swagger UI assets are served same-origin, not from `unpkg.com` — the fix targeted the wrong cause | Diagnosed via actual browser console errors instead of guessing again; found the real cause was Helmet's default HSTS header combined with Safari's HTTP-HSTS quirk forcing HTTPS on `localhost` |
 | Design vs. implementation drift | `SYSTEM_DESIGN.md` documented OpenTelemetry tracing; the Antigravity-generated code did not include it | A design doc / code mismatch — exactly the kind of gap an interviewer would probe | Caught by re-reading the design doc against the actual source tree, then implemented a minimal root-span + child-span setup exporting to console |
+| OpenTelemetry SDK v2 migration | Antigravity wrote `(provider as any).addSpanProcessor(...)` and `(provider as any).register()` to make TypeScript compile | Both methods were removed/moved in OpenTelemetry SDK v2 (`spanProcessors` must be passed at construction; `.register()` only exists on `NodeTracerProvider`, not the base class) — the `any` casts silenced the compiler instead of surfacing the real API mismatch, so the bug only showed up as a runtime crash | Removed every `as any`/`eslint-disable`, switched to the correct v2 constructor pattern and the correct class; treated the presence of `any` in AI-generated code as a signal to double-check, not a shortcut to accept |
 
 ### Quality ownership: how the final code was verified, beyond "does it run"
 
@@ -233,6 +234,12 @@ being carried forward:
   service itself, per `AGENT_SPEC.md` §0.
 - **Every non-trivial assumption is documented inline** (`// ASSUMPTION: ...`) and in
   `SYSTEM_DESIGN.md` §7, rather than silently decided by whichever tool wrote that code.
+- **Caught an architectural double-timeout**: the generated circuit breaker config set its
+  own `timeout` alongside the HTTP client's existing timeout — redundant and risky, since
+  opossum's timeout only races the promise without cancelling the underlying request. Fixed
+  by keeping exactly one timeout source (the client, which can actually abort the request)
+  and confirming the breaker still protects the system correctly via failure counting, not
+  its own clock.
 - **Lint failures were treated as real signal**: after the initial generation pass,
   `npm run lint` reported 28 problems; each was fixed individually rather than suppressed,
   including type-safety fixes (correcting hand-written middleware to use Express's
@@ -251,8 +258,11 @@ being carried forward:
 
 **Conclusion**: across every stage, AI outputs required correction — sometimes minor
 (formatting, an invalid example value), sometimes substantive (a missing persistent
-database, an overstated security claim, a duplicated type, a wrong root-cause diagnosis).
-None of these were caught by trusting AI output at face value; all were caught by
-cross-checking sources against each other, reading actual error output instead of
-guessing, and re-reading the design doc against the real code. That verification loop —
-not any single AI tool — is what this submission's quality rests on.
+database, an overstated security claim, a duplicated type, a wrong root-cause diagnosis,
+an `any`-cast hiding a breaking API change). None of these were caught by trusting AI
+output at face value; all were caught by cross-checking sources against each other,
+reading actual error output instead of guessing, and re-reading the design doc against
+the real code. That verification loop — not any single AI tool — is what this
+submission's quality rests on. The git history reflects this: commits were deliberately
+kept granular (rather than squashed into one) so this process is visible directly in
+`git log`, not just described after the fact.

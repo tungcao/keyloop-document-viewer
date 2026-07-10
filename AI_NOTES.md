@@ -149,3 +149,69 @@ Gộp thành 1 script + chạy tự động trước mỗi commit
 ## giai đoạn 11: verify requirement
 
 - Design Doc mô tả OpenTelemetry nhưng code ban đầu (Antigravity generate) thiếu — tự phát hiện qua việc đối chiếu Design Doc với source code thực tế, bổ sung implementation để đảm bảo tính nhất quán giữa tài liệu và code.
+
+## giai đoạn 12: timeout bị double config
+
+- Review lại circuit-breaker.factory.ts, thấy opossum cũng set timeout, mà client cũng có
+  timeout riêng rồi. Dư 1 chỗ.
+- opossum timeout chỉ race promise thôi, không hủy được request thật đang chạy.
+- Bỏ timeout ở opossum, chỉ giữ ở client. Breaker vẫn hoạt động bình thường vì nó đếm
+  fail/success, không cần tự đếm giờ.
+
+---
+
+## giai đoạn 13: OpenTelemetry lỗi liên tục
+
+- Implement OTel theo Design Doc (code Antigravity lúc đầu thiếu phần này).
+- Lỗi 1: `addSpanProcessor is not a function`. Xem code thấy Antigravity ghi
+  `(provider as any).addSpanProcessor(...)` — dùng any để né lỗi, không tìm hiểu tại sao.
+  SDK v2 bỏ method này rồi, giờ phải truyền spanProcessors lúc khởi tạo.
+- Lỗi 2: `register does not exist`. Sai class, `.register()` chỉ có ở NodeTracerProvider.
+- Lỗi 3: test fail, `parentSpanId` undefined. SDK v2 đổi thành `parentSpanContext.spanId`.
+- 3 lỗi cùng 1 gốc: AI code theo API cũ, mình cài bản mới (2.9.0). Any che mất lỗi thật,
+  đáng lẽ báo ngay lúc compile mà giờ mới lòi ra lúc chạy test. Lần sau thấy any/eslint-
+  disable là phải check kỹ, không tin liền.
+
+---
+
+## giai đoạn 14: lint lỗi ở pino serializers
+
+- Thêm serializers cho pino cho log gọn bớt.
+- ESLint báo unsafe assignment, do `req` bị suy ra any.
+- Sửa: khai rõ type Request/Response từ express, giống lần sửa Helmet trước.
+
+---
+
+## giai đoạn 15: dọn OpenTelemetry — log rối + thiếu dependency
+
+- Console dump nguyên object span, duration tính bằng microsecond nhìn như bug, thực ra
+  không sao, chỉ khó đọc.
+- Nhờ AI viết riêng 1 exporter gọn, in mỗi span 1 dòng: tên, ms, status, traceId ngắn.
+- Xong bị pre-commit fail: thiếu @opentelemetry/core trong package.json (exporter mới
+  dùng ExportResult/ExportResultCode từ đó, chỉ có sẵn gián tiếp qua package khác kéo
+  theo). npm install lại cho đủ.
+- Test không đổi gì, vẫn InMemorySpanExporter như cũ.
+
+---
+
+## giai đoạn 16: root span cứ hiện UNSET
+
+- Sau khi log gọn lại thấy documents.searchByVin lúc nào cũng UNSET dù response 200, 2
+  child span thì OK bình thường.
+- Root span chưa bao giờ gọi setStatus() — chỉ có setAttribute thôi.
+- Thêm setStatus(OK) ở nhánh cache hit + thành công, thêm catch để set ERROR khi lỗi rồi
+  throw lại như cũ. Tiện phát hiện luôn 2 child span thiếu attribute vin/correlationId,
+  thêm nốt.
+
+---
+
+## giai đoạn 17: dọn git history, không gom về 1 commit
+
+- Định squash hết về 1 commit cho gọn.
+- Nghĩ lại — history hiện tại chính là bằng chứng cho cả quá trình đã ghi trong file này.
+  Gom về 1 commit là mất hết bằng chứng, chỉ còn nói suông.
+- Dùng git rebase -i, chỉ gộp đúng 2 cặp trùng thật (2 commit husky giống hệt nhau, 2
+  commit OTel do lần đầu code lỗi rồi commit tiếp bản fix).
+- Check thêm .env/dist/.DS_Store không bị track — ổn từ đầu. Gỡ playwright-report và
+  test-results ra khỏi git vì đó là output chạy test, không nên có trong repo nộp.
+- Push bằng --force-with-lease cho an toàn.
