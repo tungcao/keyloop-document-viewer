@@ -40,7 +40,7 @@ npm install
 npm run start:dev
 ```
 
-The app starts on **http://localhost:3000**.
+The app starts on **<http://localhost:3000>**.
 
 ---
 
@@ -68,6 +68,7 @@ GET /api/v1/documents/:vin
 | `502 Bad Gateway` | Both sources failed / circuit breakers open |
 
 **Response shape:**
+
 ```json
 {
   "vin": "1HGCR2F8XHA000001",
@@ -138,12 +139,19 @@ npm run build   # compiles to dist/
 npm run lint    # ESLint
 ```
 
+### Static analysis (duplication / dead code)
+
+```bash
+npx jscpd src --min-lines 15 --min-tokens 30   # duplicate code detection
+npx knip                                       # unused files/exports/dependencies
+```
+
 ---
 
 ## Architecture
 
 ```
-Client → NestJS API (Helmet, ValidationPipe, Pino)
+Client → NestJS API (Helmet, ValidationPipe, Pino, OpenTelemetry)
            ├── Cache check (Redis, TTL 60s)
            └── Cache miss → Promise.allSettled fan-out
                  ├── Circuit Breaker (opossum) → SalesSystemClient
@@ -151,7 +159,8 @@ Client → NestJS API (Helmet, ValidationPipe, Pino)
                        └── Fire-and-forget → MongoDB SearchAuditLog
 ```
 
-Full design rationale: [`docs/SYSTEM_DESIGN.md`](docs/SYSTEM_DESIGN.md)
+Full design rationale, architecture diagrams, and security posture:
+[`docs/SYSTEM_DESIGN.md`](docs/SYSTEM_DESIGN.md)
 
 ---
 
@@ -171,45 +180,79 @@ Full design rationale: [`docs/SYSTEM_DESIGN.md`](docs/SYSTEM_DESIGN.md)
 
 ## AI Collaboration Narrative
 
-### How AI was used in this implementation
+AI was used across the full lifecycle of this submission — scenario selection, system
+design, implementation, and debugging — with three different tools (Claude, Grok,
+Antigravity/Gemini) playing different roles at different stages. The full raw log is kept
+in [`AI_NOTES.md`](AI_NOTES.md); this section summarizes the strategy, the verification
+process, and how final quality was ensured.
 
-This project was built in a single session with Antigravity (Google DeepMind), using
-a structured spec-driven workflow:
+### Strategy: what AI was used for, and what it wasn't
 
-**Design phase** (prior to this session): Claude and Grok were used as design collaborators
-to stress-test architectural decisions — see [`docs/SYSTEM_DESIGN.md` §8](docs/SYSTEM_DESIGN.md)
-and [`AI_NOTES.md`](AI_NOTES.md) for the full log.
+**Used AI for:** widening the option space before deciding (comparing scenarios and
+tech-stack proposals), generating boilerplate/implementation from a locked spec, and
+first-pass debugging of unfamiliar errors (CSP, Helmet, TypeScript/ESLint edge cases).
 
-**Implementation phase** (this session): The agent was given `AGENT_SPEC.md` as the
-authoritative implementation spec and `ANTIGRAVITY_PROMPT.md` as the session prompt.
-It implemented all 13 steps in the specified order, stopping after each numbered step
-for review.
+**Did not delegate to AI:** the final choice of scenario, the final tech stack, whether a
+proposed pattern actually fit this problem, and whether the security-posture document
+was honest about what was actually implemented. Every one of these was a decision I made
+after AI provided input — not a decision AI made for me. The pattern that repeats
+throughout the log is: **ask multiple sources → cross-check them against each other →
+apply my own judgment about scope and correctness.**
 
-**What worked well:**
-- The spec-driven approach eliminated back-and-forth: the agent read the spec once and
-  produced correct file structure, contracts, and business logic on the first pass.
-- The `ASSUMPTION:` comment convention from §0 was followed when `opossum`'s CommonJS
-  import style required a deviation — the agent flagged it inline rather than silently
-  choosing an approach.
-- Test-alongside-implementation (§5) worked: 6/6 Jest tests were written and passed in
-  the same step as the service, not deferred.
+### Verification: concrete cases where AI output was wrong, incomplete, or overstated
 
-**What required correction:**
-- The opossum `import * as CircuitBreaker` pattern caused a TypeScript construct
-  error — fixed by switching to `import CircuitBreaker = require('opossum')` with an
-  eslint-disable comment, which is the correct pattern for CJS modules in strict TS.
-- The audit log failure test initially leaked an unhandled rejection into the Node
-  process — corrected by having the mock mirror the real service's internal `.catch()`
-  pattern.
+These are not hypothetical — each was caught during this project and corrected before
+being carried forward:
 
-**Human decisions retained throughout:**
-- The `Promise.allSettled` requirement (§4) was a hard spec constraint; the agent
-  respected it and never attempted `Promise.all`.
-- Scope boundaries (no auth, no queue, no frontend) were respected without prompting.
-- Each step was reviewed before the next began, catching the opossum issue before it
-  propagated into dependent files.
+| Stage | What AI produced | What was wrong / missing | Correction |
+|---|---|---|---|
+| Scenario selection | Claude and Grok both leaned toward Scenario A (booking/concurrency) as the strongest choice for a Lead role | Neither AI weighed *my* one-week execution risk on an unfamiliar domain (time-range locking) | Chose **Scenario D** instead — a deliberate risk/scope call the AI didn't make for me |
+| Reusing prior code | Considered reusing a Redis `decrBy` stock-decrement pattern from an earlier project | Claude identified that atomic counter decrement doesn't translate to time-range overlap booking — a real design flaw if copied blindly into Scenario A | Confirmed as a supporting reason to prefer D over A |
+| Tech stack | Grok proposed a full Next.js frontend, a monorepo, BullMQ for audit logging, and MSW | All four were scope creep for a one-layer, one-week deliverable | Asked Claude to critically review Grok's proposal; cut all four myself after evaluating the trade-offs, kept only the genuinely useful parts (class-validator, Jest, Mermaid) |
+| System Design Doc | An early AI-assisted draft used Redis as the *only* data store | This does **not** satisfy the challenge's explicit "use a persistent database" requirement — Redis is a cache, not a system of record | Added MongoDB (`SearchAuditLog`) as the actual persistence layer, chosen for genuine operational value, not just to satisfy a checklist |
+| Design Doc formatting (Gemini) | Markdown structure broke on render; contained a VIN example (`VINVIN1234567890`) that isn't a valid 17-character VIN; used white text on a light-yellow background | Rendering bug, factual inaccuracy, and an accessibility/contrast issue | Forced raw-markdown output via code block, corrected the VIN example to a real 17-char format (`1HGCR2F8XHA000001`), manually fixed the text color |
+| Security section (Gemini) | Listed JWT/RBAC/Cloudflare WAF under a single "security strategy" section, implying they were implemented | None of these were actually built — this would not have survived a follow-up interview question | Split Section 6 into **"Implemented in this submission"** vs. **"Production considerations, out of scope"** so the doc never overstates what the code does |
+| Implementation (Antigravity) | Mock controllers (`MockSalesController`, `MockServiceController`) each defined their own local `MockDocument` interface | Duplicated the existing `UnifiedDocument` interface under a different name — a maintainability risk (drift over time) | Caught via manual code review, then set up `jscpd` and `knip` as repeatable static-analysis checks so this class of issue is caught automatically going forward, not just by eyeballing |
+| Debugging: Swagger blank page | Gemini's first fix (whitelisting `unpkg.com` in CSP) didn't work | Swagger UI assets are served same-origin, not from `unpkg.com` — the fix targeted the wrong cause | Diagnosed via actual browser console errors instead of guessing again; found the real cause was Helmet's default HSTS header combined with Safari's HTTP-HSTS quirk forcing HTTPS on `localhost` |
+| Design vs. implementation drift | `SYSTEM_DESIGN.md` documented OpenTelemetry tracing; the Antigravity-generated code did not include it | A design doc / code mismatch — exactly the kind of gap an interviewer would probe | Caught by re-reading the design doc against the actual source tree, then implemented a minimal root-span + child-span setup exporting to console |
 
-**Conclusion:** The agent was most effective as an implementation accelerator when given
-a precise, constraint-explicit spec. The review-per-step cadence was the key control
-that kept the session on track — it's the reason this submission can be explained
-line-by-line rather than just run.
+### Quality ownership: how the final code was verified, beyond "does it run"
+
+- **Static analysis, not just manual review**: `knip` (unused files/exports/dependencies),
+  `jscpd` (duplicate code), and ESLint with `eslint-plugin-sonarjs` were added specifically
+  because manual review had already missed one duplication issue — the tooling exists to
+  catch the *next* one automatically rather than relying on catching it by eye every time.
+- **Spec-driven implementation, reviewed per step**: Antigravity was given `AGENT_SPEC.md`
+  (the authoritative implementation spec derived from `SYSTEM_DESIGN.md`) and a prompt
+  instructing it to implement in a fixed order, pausing after each step for review — this
+  caught issues (like the mock-controller duplication) close to where they were introduced,
+  rather than after the whole codebase was generated.
+- **Tests written alongside code, not after**: the Jest suite for `DocumentsService` covers
+  all six business-logic branches (both sources succeed, one fails, both fail, both empty,
+  cache hit, audit-log failure) and was written in the same implementation step as the
+  service itself, per `AGENT_SPEC.md` §0.
+- **Every non-trivial assumption is documented inline** (`// ASSUMPTION: ...`) and in
+  `SYSTEM_DESIGN.md` §7, rather than silently decided by whichever tool wrote that code.
+- **Lint failures were treated as real signal**: after the initial generation pass,
+  `npm run lint` reported 28 problems; each was fixed individually rather than suppressed,
+  including type-safety fixes (correcting hand-written middleware to use Express's
+  `Request`/`Response`/`NextFunction` types instead of raw Node `IncomingMessage`/
+  `ServerResponse`, which had been silently accepted by `any`-shaped code).
+
+### Tools used
+
+- **Claude** — architecture trade-off analysis, critical review of the other AI's
+  proposals, spec authoring (`AGENT_SPEC.md`), and debugging (CSP/HSTS root-cause analysis).
+- **Grok** — a second, independent source of design/stack proposals, used specifically to
+  cross-check Claude's recommendations rather than being followed on its own.
+- **Gemini** — System Design Document drafting and first-pass debugging suggestions.
+- **Antigravity (Google, agentic IDE)** — implementation of the NestJS codebase from the
+  locked spec, in a single reviewed, step-by-step session.
+
+**Conclusion**: across every stage, AI outputs required correction — sometimes minor
+(formatting, an invalid example value), sometimes substantive (a missing persistent
+database, an overstated security claim, a duplicated type, a wrong root-cause diagnosis).
+None of these were caught by trusting AI output at face value; all were caught by
+cross-checking sources against each other, reading actual error output instead of
+guessing, and re-reading the design doc against the real code. That verification loop —
+not any single AI tool — is what this submission's quality rests on.
