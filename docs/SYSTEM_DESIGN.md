@@ -18,20 +18,24 @@ graph TD
 
     subgraph AppBoundary["NestJS Service Layer"]
         NestAPI -->|"2. Check cache"| Redis[("Redis Cache<br/>TTL 60s")]
-        NestAPI -->|"3. Cache miss: parallel dispatch"| Aggregator["Aggregator Service"]
+        NestAPI -->|"3. Cache miss: parallel dispatch"| Aggregator["Aggregator Service<br/>(fan-out + merge + normalize)"]
 
         Aggregator -->|"4a."| SalesCB["Circuit Breaker<br/>(opossum) — Sales"]
         Aggregator -->|"4b."| ServiceCB["Circuit Breaker<br/>(opossum) — Service"]
 
-        SalesCB -->|"Timeout 3s"| SalesClient["SalesSystemClient"]
-        ServiceCB -->|"Timeout 3s"| ServiceClient["ServiceSystemClient"]
+        SalesCB --> SalesClient["SalesSystemClient"]
+        ServiceCB --> ServiceClient["ServiceSystemClient"]
 
+        Aggregator -->|"5. write cache"| Redis
         Aggregator -->|"5. fire-and-forget audit write"| Mongo[("MongoDB<br/>SearchAuditLog")]
     end
 
+    Aggregator -.->|"6. merged response"| NestAPI
+    NestAPI -.->|"7. JSON response"| Client
+
     subgraph External["Mocked External Systems"]
-        SalesClient -->|"HTTP GET"| MockSales["Mock Sales System API"]
-        ServiceClient -->|"HTTP GET"| MockService["Mock Service System API"]
+        SalesClient -->|"HTTP GET, timeout 3s"| MockSales["Mock Sales System API"]
+        ServiceClient -->|"HTTP GET, timeout 3s"| MockService["Mock Service System API"]
     end
 
     classDef infra fill:#f9f,color:#000,stroke:#333,stroke-width:2px;
@@ -68,6 +72,7 @@ sequenceDiagram
     participant Cache as Redis Cache
     participant Agg as Aggregator Service
     participant CB as Circuit Breakers
+    participant HC as HTTP Clients (3s timeout)
     participant Ext as External Systems (mocked)
     participant DB as MongoDB (Audit Log)
 
@@ -84,13 +89,18 @@ sequenceDiagram
 
         par Fetch Sales
             Agg->>CB: call via breaker
-            CB->>Ext: GET /mock/sales?vin=...
-            Ext-->>CB: 200 OK / timeout / error
-            CB-->>Agg: fulfilled / rejected
+            CB->>HC: fire()
+            HC->>Ext: GET /mock/sales?vin=...
+            Ext-->>HC: 200 OK / error
+            Note over HC: 3s timeout enforced here —<br/>cancels the request if exceeded
+            HC-->>CB: fulfilled / rejected
+            CB-->>Agg: fulfilled / rejected<br/>(breaker only counts outcome)
         and Fetch Service
             Agg->>CB: call via breaker
-            CB->>Ext: GET /mock/service?vin=...
-            Ext-->>CB: 200 OK / timeout / error
+            CB->>HC: fire()
+            HC->>Ext: GET /mock/service?vin=...
+            Ext-->>HC: 200 OK / error
+            HC-->>CB: fulfilled / rejected
             CB-->>Agg: fulfilled / rejected
         end
 

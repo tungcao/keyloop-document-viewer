@@ -215,3 +215,12 @@ Gộp thành 1 script + chạy tự động trước mỗi commit
 - Check thêm .env/dist/.DS_Store không bị track — ổn từ đầu. Gỡ playwright-report và
   test-results ra khỏi git vì đó là output chạy test, không nên có trong repo nộp.
 - Push bằng --force-with-lease cho an toàn.
+
+---
+
+## giai đoạn 18: record a video demo
+
+- Record video demo thì phát hiện Architecture diagram thiếu mũi tên response từ Aggregator về Client
+- Sequence diagram lại bị sai
+- Cả 2 lỗi trên đều liên quan đến việc design và code không match nhau, và không được phát hiện qua test
+- Tôi nhờ Claude generate lại 2 diagram trên và thấy hợp lý hơn
